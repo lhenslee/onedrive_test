@@ -10,18 +10,27 @@ class OAuth:
     redirect_uri = str()
     client_secret = str()
     code = str()
+    auth_base_url = str()
+    token_url = str()
 
     def __init__(self):
         self.load_config()
         self.store_json_to_class_vars()
+        if self.access_token_does_not_exist():
+            self.get_token()
+
+    def access_token_does_not_exist(self):
+        if 'access_token' not in self.config.keys():
+            return True
+        return False
 
     def store_json_to_class_vars(self):
         self.client_id = self.config['clientId']
         self.tenant_id = self.config['tenantId']
         self.scope = self.config['scope']
         self.redirect_uri = self.config['redirectURI']
-        self.client_secret = self.config['clientSecret']
-        self.code = self.config['code']
+        self.auth_base_url = f'https://login.microsoftonline.us/{self.tenant_id}/ouauth2/v2.0/authorize?'
+        self.token_url = f'https://login.microsoftonline.us/{self.tenant_id}/oauth2/v2.0/token'
 
     def load_config(self):
         with open('settings.json', 'r') as f:
@@ -33,6 +42,16 @@ class OAuth:
                        f'&scope={self.scope}&response_type=code&redirect_uri={self.redirect_uri}'
         return auth_request
 
+    def get_token(self):
+        auth_request = self.get_auth_request()
+        response_uri = input(f'{auth_request}\n')
+        code = response_uri.split('code=')[1].split('&')[0]
+        code_response = self.get_code_post_response_in_json(code)
+        self.config['access_token'] = code_response['access_token']
+        self.config['refresh_token'] = code_response['refresh_token']
+        with open('settings.json', 'w') as f:
+            json.dump(self.config, f)
+
     '''
     POST https://login.microsoftonline.us/common/oauth2/v2.0/token
     Content-Type: application/x-www-form-urlencoded
@@ -40,20 +59,19 @@ class OAuth:
     client_id={client_id}&redirect_uri={redirect_uri}&client_secret={client_secret}
     &code={code}&grant_type=authorization_code    
     '''
-    def post_code(self):
+    def get_code_post_response_in_json(self, code):
         headers = {
             'Content-Type': 'application/x-www-form-urlencoded'
         }
         data = {
             'client_id': self.client_id, 'redirect_uri': self.redirect_uri,
-            #'client_secret': self.client_secret,
-            'code': self.code, 'grant_type': 'authorization_code'
+            'client_secret': self.client_secret,
+            'code': code, 'grant_type': 'authorization_code'
         }
         url = f'https://login.microsoftonline.us/{self.tenant_id}/oauth2/v2.0/token'
-        return requests.post(url, data=data, headers=headers)
+        raw_text = requests.post(url, data=data, headers=headers).text
+        return json.loads(raw_text)
 
 
 auth = OAuth()
-print(auth.get_auth_request())
-print(auth.post_code().text)
 
