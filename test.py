@@ -1,4 +1,5 @@
 import json
+import os
 import requests
 
 
@@ -12,6 +13,7 @@ class OAuth:
     code = str()
     auth_base_url = str()
     token_url = str()
+    url_root = str()
 
     def __init__(self):
         self.load_config()
@@ -29,7 +31,8 @@ class OAuth:
         self.tenant_id = self.config['tenantId']
         self.scope = self.config['scope']
         self.redirect_uri = self.config['redirectURI']
-        self.auth_base_url = f'https://login.microsoftonline.us/{self.tenant_id}/ouauth2/v2.0/authorize?'
+        self.url_root = self.config['url_root']
+        self.auth_base_url = f'https://login.microsoftonline.us/{self.tenant_id}/oauth2/v2.0/authorize?'
         self.token_url = f'https://login.microsoftonline.us/{self.tenant_id}/oauth2/v2.0/token'
 
     def load_config(self):
@@ -37,20 +40,9 @@ class OAuth:
             self.config = json.load(f)
 
     def get_auth_request(self):
-        auth_request = f'https://login.microsoftonline.us/{self.tenant_id}/oauth2/v2.0/authorize?'\
-                       f'client_id={self.client_id}'\
+        auth_request = f'{self.auth_base_url}client_id={self.client_id}'\
                        f'&scope={self.scope}&response_type=code&redirect_uri={self.redirect_uri}'
         return auth_request
-
-    def get_token(self):
-        auth_request = self.get_auth_request()
-        response_uri = input(f'{auth_request}\n')
-        code = response_uri.split('code=')[1].split('&')[0]
-        code_response = self.get_code_post_response_in_json(code)
-        self.config['access_token'] = code_response['access_token']
-        self.config['refresh_token'] = code_response['refresh_token']
-        with open('settings.json', 'w') as f:
-            json.dump(self.config, f)
 
     '''
     POST https://login.microsoftonline.us/common/oauth2/v2.0/token
@@ -71,6 +63,37 @@ class OAuth:
         url = f'https://login.microsoftonline.us/{self.tenant_id}/oauth2/v2.0/token'
         raw_text = requests.post(url, data=data, headers=headers).text
         return json.loads(raw_text)
+
+    '''
+    POST https://login.microsoftonline.com/common/oauth2/v2.0/token
+    Content-Type: application/x-www-form-urlencoded
+
+    client_id={client_id}&redirect_uri={redirect_uri}&client_secret={client_secret}
+    &refresh_token={refresh_token}&grant_type=refresh_token
+    '''
+    def use_refresh_token(self, refresh_token):
+        headers = {
+            'Content-Type': 'application/x-www-form-urlencoded'
+        }
+        data = {
+            'client_id': self.client_id, 'redirect_uri': self.redirect_uri,
+            'client_secret': self.client_secret,
+            'refresh_token': refresh_token, 'grant_type': 'refresh_token'
+        }
+        raw_text = requests.post(self.token_url, data=data, headers=headers).text
+        return json.loads(raw_text)
+
+    def get_token(self):
+        auth_request = self.get_auth_request()
+        os.system(f'start "" "{auth_request}"')
+        response_uri = input('Please input the redirect URL:\n')
+        code = response_uri.split('code=')[1].split('&')[0]
+        code_response = self.get_code_post_response_in_json(code)
+        self.config['access_token'] = code_response['access_token']
+        self.config['refresh_token'] = code_response['refresh_token']
+        self.config['id_token'] = code_response['id_token']
+        with open('settings.json', 'w') as f:
+            json.dump(self.config, f, indent=2)
 
 
 auth = OAuth()
